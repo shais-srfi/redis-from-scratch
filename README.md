@@ -3,7 +3,7 @@
 ## Requirements
 
 - Linux or WSL2 (Ubuntu)
-- g++ with C++20 support
+- g++ with C++11 support
 - cmake
 - ninja (optional, can use the default make generator instead)
 

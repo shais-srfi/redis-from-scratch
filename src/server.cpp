@@ -1,22 +1,38 @@
 #include "common.h"
-#include <stdint.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netinet/ip.h>
 
-static void do_something(int connfd) {
-    char rbuf[64] = {};
-    ssize_t n = read(connfd, rbuf, sizeof(rbuf) - 1);
-    if (n < 0) {
-        printf("read() error");
-        return;
+static int32_t one_request(int connfd) {
+    // reads 4 byte header in stream
+    char rbuf[4 + k_max_msg];
+    errno = 0;
+    int32_t err = read_full(connfd, rbuf, 4);
+    if (err) {
+        msg(errno == 0 ? "EOF" : "read() error ");
+        return err;
     }
-    printf("client says: %s\n", rbuf);
+    uint32_t len = 0;
+    memcpy(&len, rbuf, 4);
+    if (len > k_max_msg) {
+        msg("too long");
+        return -1;
+    }
 
-    char wbuf[] = "world";
-    write(connfd, wbuf, strlen(wbuf));
+    // request body
+    err = read_full(connfd, &rbuf[4], len);
+    if (err) {
+        msg("read() error");
+        return err;
+    }
+
+    // outputting client
+    printf("client says: %.*s\n", len, &rbuf[4]);
+
+    // replying to client
+    const char reply[] = "world";
+    char wbuf[4 + sizeof(reply)];
+    len = (uint32_t)strlen(reply);
+    memcpy(wbuf, &len, 4);
+    memcpy(&wbuf[4], reply, len);
+    return write_all(connfd, wbuf, 4 + len);
 }
 
 int main() {
@@ -49,7 +65,11 @@ int main() {
         int connfd = accept(fd, (struct sockaddr *)&client_addr, &addrlen);
         if (connfd < 0) { continue; }   // error
 
-        do_something(connfd);
+        // serves one client at a time
+        while (true) {
+            int32_t err = one_request(connfd);
+            if (err) { break; }
+        }
         close(connfd);
     }
 
